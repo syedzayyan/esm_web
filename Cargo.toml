@@ -1,0 +1,29 @@
+[package]
+name = "esm-rs"
+version = "0.1.0"
+edition = "2021"   # 2021 is safer with current tooling
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Candle (same versions you already have)
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.2-alpha.2" }
+candle-nn   = { git = "https://github.com/huggingface/candle.git", version = "0.9.2-alpha.2" }
+
+# Tokenizers with wasm support
+tokenizers = { version = "0.22.2", default-features = false, features = ["unstable_wasm"] }
+
+# wasm + serde plumbing
+wasm-bindgen = "0.2.108"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+serde-wasm-bindgen = "0.6.5"
+console_error_panic_hook = "0.1.7"
+tracing = "0.1.44"
+
+# getrandom override for wasm (required by Candle) [web:21]
+getrandom = { version = "0.2", features = ["js"] }
+
+# Optional: bhtsne probably won’t compile to wasm; remove it for the wasm crate
+# bhtsne = "0.5.4"
