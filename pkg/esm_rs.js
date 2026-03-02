@@ -24,15 +24,15 @@ export class Model {
     }
     /**
      * @param {Uint8Array} weights
-     * @param {Uint8Array} tokenizer
-     * @param {Uint8Array} config
+     * @param {Uint8Array} tokenizer_bytes
+     * @param {Uint8Array} config_bytes
      */
-    constructor(weights, tokenizer, config) {
+    constructor(weights, tokenizer_bytes, config_bytes) {
         const ptr0 = passArray8ToWasm0(weights, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(tokenizer, wasm.__wbindgen_malloc);
+        const ptr1 = passArray8ToWasm0(tokenizer_bytes, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(config, wasm.__wbindgen_malloc);
+        const ptr2 = passArray8ToWasm0(config_bytes, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
         const ret = wasm.model_load(ptr0, len0, ptr1, len1, ptr2, len2);
         if (ret[2]) {
@@ -44,6 +44,14 @@ export class Model {
     }
 }
 if (Symbol.dispose) Model.prototype[Symbol.dispose] = Model.prototype.free;
+
+/**
+ * @enum {0 | 1}
+ */
+export const ModelType = Object.freeze({
+    Bert: 0, "0": "Bert",
+    Esm2: 1, "1": "Esm2",
+});
 
 function __wbg_get_imports() {
     const import0 = {

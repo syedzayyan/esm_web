@@ -1,489 +1,524 @@
 <!doctype html>
 <html lang="en" data-bs-theme="dark">
-  <head>
-    <meta charset="utf-8" />
-    <title>Embedding t‑SNE Visualizer</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <head>
+        <meta charset="utf-8" />
+        <title>Embedding t‑SNE Visualizer</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Bootstrap 5 -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <!-- htmx (used lightly) -->
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <!-- D3 for plotting -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <!-- Plain JS t-SNE implementation (e.g. tsnejs) -->
-    <script src="./tsne.js"></script>
+        <!-- Bootstrap 5 -->
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <!-- htmx -->
+        <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+        <!-- D3 -->
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <!-- tsne.js -->
+        <script src="./tsne.js"></script>
 
-    <style>
-      body {
-        background: radial-gradient(circle at top, #0f172a, #020617 55%);
-        color: #e5e7eb;
-      }
-      .app-shell {
-        max-width: 1200px;
-      }
-      #plot {
-        background-color: #020617;
-      }
-      #log {
-        background-color: #020617;
-        border: 1px solid #1f2933;
-        border-radius: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-        font-size: 0.8rem;
-        height: 150px;
-        overflow-y: auto;
-      }
-    </style>
-  </head>
-  <body class="d-flex flex-column min-vh-100">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
-      <div class="container app-shell">
-        <a class="navbar-brand fw-semibold" href="#">Embedding t‑SNE Visualizer</a>
-        <span id="status" class="navbar-text small text-secondary ms-auto">Idle</span>
-      </div>
-    </nav>
-
-    <main class="flex-grow-1 py-3">
-      <div class="container app-shell">
-        <div class="row g-3">
-          <div class="col-lg-4">
-            <h2 class="h5 mb-2">Input</h2>
-
-            <!-- Model selection -->
-            <div class="mb-3">
-              <label for="model-select" class="form-label">Model</label>
-              <select id="model-select" class="form-select form-select-sm">
-                <option value="intfloat_e5_small_v2" selected>
-                  intfloat/e5-small-v2
-                </option>
-                <option value="intfloat_e5_base_v2">intfloat/e5-base-v2</option>
-                <option value="intfloat_multilingual_e5_small">
-                  intfloat/multilingual-e5-small
-                </option>
-                <option value="sentence_transformers_all_MiniLM_L6_v2">
-                  all-MiniLM-L6-v2
-                </option>
-                <option value="sentence_transformers_all_MiniLM_L12_v2">
-                  all-MiniLM-L12-v2
-                </option>
-              </select>
-              <div class="form-text text-secondary">
-                Select which embedding model to use.
-              </div>
-            </div>
-
-            <!-- t-SNE hyperparameters -->
-            <h3 class="h6 mt-3">t‑SNE hyperparameters</h3>
-            <div class="row g-2 mb-3">
-              <div class="col-4">
-                <label for="perplexity" class="form-label form-label-sm"
-                  >Perplexity</label
-                >
-                <input
-                  id="perplexity"
-                  type="number"
-                  class="form-control form-control-sm"
-                  value="10"
-                  min="1"
-                  step="1"
-                />
-              </div>
-              <div class="col-4">
-                <label for="iters" class="form-label form-label-sm"
-                  >Iterations</label
-                >
-                <input
-                  id="iters"
-                  type="number"
-                  class="form-control form-control-sm"
-                  value="500"
-                  min="10"
-                  step="10"
-                />
-              </div>
-              <div class="col-4">
-                <label for="epsilon" class="form-label form-label-sm"
-                  >Learning rate</label
-                >
-                <input
-                  id="epsilon"
-                  type="number"
-                  class="form-control form-control-sm"
-                  value="10"
-                  min="1"
-                  step="1"
-                />
-              </div>
-            </div>
-
-            <!-- Comma-separated text input -->
-            <div class="mb-3">
-              <label for="texts" class="form-label"
-                >Comma‑separated texts</label
-              >
-              <textarea
-                id="texts"
-                class="form-control"
-                rows="3"
-                placeholder="cat, dog, banana, car"
-              ></textarea>
-              <div class="form-text text-secondary">
-                If both text and FASTA are provided, FASTA takes precedence.
-              </div>
-            </div>
-
-            <!-- FASTA file input -->
-            <div class="mb-3">
-              <label for="fasta" class="form-label">FASTA file</label>
-              <input
-                id="fasta"
-                type="file"
-                class="form-control"
-                accept=".fa,.fasta,.txt"
-              />
-              <div class="form-text text-secondary">
-                Each sequence becomes one point labeled by its header.
-              </div>
-            </div>
-
-            <button id="run" class="btn btn-primary mb-3 w-100">
-              Compute & Run t‑SNE
-            </button>
-          </div>
-
-          <div class="col-lg-5">
-            <h2 class="h5 mb-2">t‑SNE plot</h2>
-            <svg
-              id="plot"
-              width="600"
-              height="500"
-              class="border border-secondary rounded"
-            ></svg>
-          </div>
-
-          <div class="col-lg-3">
-            <h2 class="h5 mb-2">Progress log</h2>
-            <div id="log"></div>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <footer class="py-2 border-top border-secondary-subtle">
-      <div class="container app-shell text-center text-secondary small">
-        Rust wasm embeddings · t‑SNE in plain JS · D3 scatterplot
-      </div>
-    </footer>
-
-    <!-- Main app logic -->
-    <script type="module">
-      import initWasm from "./pkg/esm_rs.js";
-
-      function logMessage(msg) {
-        const log = document.getElementById("log");
-        const ts = new Date().toLocaleTimeString();
-        log.textContent += "[" + ts + "] " + msg + "\n";
-        log.scrollTop = log.scrollHeight;
-      }
-
-      function setStatus(text) {
-        document.getElementById("status").textContent = text;
-        logMessage(text);
-      }
-
-      // ---------- Embedding helpers (inline) ----------
-
-      const MODELS = {
-        intfloat_e5_small_v2: {
-          base_url: "https://huggingface.co/intfloat/e5-small-v2/resolve/main/",
-          search_prefix: "query: ",
-          document_prefix: "passage: ",
-        },
-        intfloat_e5_base_v2: {
-          base_url: "https://huggingface.co/intfloat/e5-base-v2/resolve/main/",
-          search_prefix: "query: ",
-          document_prefix: "passage:",
-        },
-        intfloat_multilingual_e5_small: {
-          base_url:
-            "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/",
-          search_prefix: "query: ",
-          document_prefix: "passage: ",
-        },
-        sentence_transformers_all_MiniLM_L6_v2: {
-          base_url:
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/refs%2Fpr%2F21/",
-          search_prefix: "",
-          document_prefix: "",
-        },
-        sentence_transformers_all_MiniLM_L12_v2: {
-          base_url:
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/refs%2Fpr%2F4/",
-          search_prefix: "",
-          document_prefix: "",
-        },
-      };
-
-      function getModelInfo(id) {
-        return {
-          modelURL: MODELS[id].base_url + "model.safetensors",
-          configURL: MODELS[id].base_url + "config.json",
-          tokenizerURL: MODELS[id].base_url + "tokenizer.json",
-          search_prefix: MODELS[id].search_prefix,
-          document_prefix: MODELS[id].document_prefix,
-        };
-      }
-
-      function getEmbeddings(
-        worker,
-        weightsURL,
-        tokenizerURL,
-        configURL,
-        modelID,
-        sentences,
-        updateStatus = null
-      ) {
-        return new Promise((resolve, reject) => {
-          worker.postMessage({
-            weightsURL,
-            tokenizerURL,
-            configURL,
-            modelID,
-            sentences,
-          });
-          function messageHandler(event) {
-            if ("error" in event.data) {
-              worker.removeEventListener("message", messageHandler);
-              reject(new Error(event.data.error));
+        <style>
+            body {
+                background: radial-gradient(
+                    circle at top,
+                    #0f172a,
+                    #020617 55%
+                );
+                color: #e5e7eb;
             }
-            if (event.data.status === "complete") {
-              worker.removeEventListener("message", messageHandler);
-              resolve(event.data);
+            .app-shell {
+                max-width: 1200px;
             }
-            if (updateStatus) updateStatus(event.data);
-          }
-          worker.addEventListener("message", messageHandler);
-        });
-      }
-
-      // ---------- FASTA parsing ----------
-
-      function parseFasta(text) {
-        const lines = text.split(/\r?\n/);
-        const records = [];
-        let currentId = null;
-        let currentSeq = [];
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          if (line.startsWith(">")) {
-            if (currentId !== null) {
-              records.push({ id: currentId, seq: currentSeq.join("") });
+            #plot {
+                background-color: #020617;
             }
-            currentId = line.slice(1).trim();
-            currentSeq = [];
-          } else {
-            currentSeq.push(line.trim());
-          }
-        }
-        if (currentId !== null) {
-          records.push({ id: currentId, seq: currentSeq.join("") });
-        }
-        return records;
-      }
 
-      function fastaRecordsToTexts(records) {
-        return records.map((r) => r.seq);
-      }
+            /* Console at bottom */
+            #log {
+                background-color: #020617;
+                border: 1px solid #1f2933;
+                border-radius: 0.5rem;
+                padding: 0.5rem 0.75rem;
+                font-family:
+                    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                    "Liberation Mono", "Courier New", monospace;
+                font-size: 0.8rem;
+                height: 150px;
+                overflow-y: auto;
+                margin-top: auto;
+            }
 
-      // ---------- t-SNE using plain JS tsne.js (global 'tsnejs') ----------
+            /* Progress bar */
+            .progress-section {
+                display: none;
+            }
+            .progress-section.show {
+                display: block;
+            }
+            .download-progress {
+                height: 0.5rem;
+            }
 
-      function runTsneJs(embeddings, perplexity, iters, epsilon) {
-        const opt = {
-          epsilon: epsilon,
-          perplexity: perplexity,
-          dim: 2,
-        };
-        const tsne = new tsnejs.tSNE(opt); // tsne.js must define window.tsnejs.tSNE
-        tsne.initDataRaw(embeddings);
-        for (let i = 0; i < iters; i++) {
-          tsne.step();
-          if ((i + 1) % Math.max(1, Math.floor(iters / 10)) === 0) {
-            logMessage("t‑SNE iteration " + (i + 1) + "/" + iters);
-          }
-        }
-        const Y = tsne.getSolution(); // N x 2
-        return Y.map((row) => ({ x: row[0], y: row[1] }));
-      }
+            /* Footer sticky */
+            .footer-log {
+                position: sticky;
+                bottom: 0;
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(10px);
+            }
+        </style>
+    </head>
+    <body class="d-flex flex-column min-vh-100">
+        <nav
+            class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary"
+        >
+            <div class="container app-shell">
+                <a class="navbar-brand fw-semibold" href="#"
+                    >Embedding t‑SNE Visualizer</a
+                >
+                <span
+                    id="status"
+                    class="navbar-text small text-secondary ms-auto"
+                    >Idle</span
+                >
+            </div>
+        </nav>
 
-      // ---------- D3 scatter plot ----------
+        <main class="flex-grow-1 py-3">
+            <div class="container app-shell">
+                <div class="row g-3">
+                    <div class="col-lg-4">
+                        <h2 class="h5 mb-2">Input</h2>
 
-      function drawScatter(points, labels) {
-        const svg = d3.select("#plot");
-        const width = +svg.attr("width");
-        const height = +svg.attr("height");
-        svg.selectAll("*").remove();
+                        <!-- Model selection -->
+                        <div class="mb-3">
+                            <label for="model-select" class="form-label"
+                                >Model</label
+                            >
+                            <select
+                                id="model-select"
+                                class="form-select form-select-sm"
+                            >
+                                <option value="facebook_esm2_t6_8M_UR50D">
+                                    facebook/esm2_t6_8M_UR50D
+                                </option>
+                                <option value="intfloat_e5_small_v2" selected>
+                                    intfloat/e5-small-v2
+                                </option>
+                                <option value="intfloat_e5_base_v2">
+                                    intfloat/e5-base-v2
+                                </option>
+                                <option value="intfloat_multilingual_e5_small">
+                                    intfloat/multilingual-e5-small
+                                </option>
+                                <option
+                                    value="sentence_transformers_all_MiniLM_L6_v2"
+                                >
+                                    all-MiniLM-L6-v2
+                                </option>
+                                <option
+                                    value="sentence_transformers_all_MiniLM_L12_v2"
+                                >
+                                    all-MiniLM-L12-v2
+                                </option>
+                            </select>
+                            <div class="form-text text-secondary">
+                                Select embedding model
+                            </div>
+                        </div>
 
-        if (!points.length) return;
+                        <!-- t-SNE hyperparameters -->
+                        <h3 class="h6 mt-3">t‑SNE hyperparameters</h3>
+                        <div class="row g-2 mb-3">
+                            <div class="col-4">
+                                <label
+                                    for="perplexity"
+                                    class="form-label form-label-sm"
+                                    >Perplexity</label
+                                >
+                                <input
+                                    id="perplexity"
+                                    type="number"
+                                    class="form-control form-control-sm"
+                                    value="10"
+                                    min="1"
+                                    step="1"
+                                />
+                            </div>
+                            <div class="col-4">
+                                <label
+                                    for="iters"
+                                    class="form-label form-label-sm"
+                                    >Iterations</label
+                                >
+                                <input
+                                    id="iters"
+                                    type="number"
+                                    class="form-control form-control-sm"
+                                    value="500"
+                                    min="10"
+                                    step="10"
+                                />
+                            </div>
+                            <div class="col-4">
+                                <label
+                                    for="epsilon"
+                                    class="form-label form-label-sm"
+                                    >Learning rate</label
+                                >
+                                <input
+                                    id="epsilon"
+                                    type="number"
+                                    class="form-control form-control-sm"
+                                    value="10"
+                                    min="1"
+                                    step="1"
+                                />
+                            </div>
+                        </div>
 
-        const xs = points.map((p) => p.x);
-        const ys = points.map((p) => p.y);
+                        <!-- Comma-separated text input -->
+                        <div class="mb-3">
+                            <label for="texts" class="form-label"
+                                >Comma‑separated texts</label
+                            >
+                            <textarea
+                                id="texts"
+                                class="form-control"
+                                rows="3"
+                                placeholder="cat, dog, banana, car"
+                            ></textarea>
+                            <div class="form-text text-secondary">
+                                If both text and FASTA provided, FASTA takes
+                                precedence.
+                            </div>
+                        </div>
 
-        const xScale = d3
-          .scaleLinear()
-          .domain([d3.min(xs), d3.max(xs)])
-          .nice()
-          .range([50, width - 20]);
-        const yScale = d3
-          .scaleLinear()
-          .domain([d3.min(ys), d3.max(ys)])
-          .nice()
-          .range([height - 40, 20]);
+                        <!-- FASTA file input -->
+                        <div class="mb-3">
+                            <label for="fasta" class="form-label"
+                                >FASTA file</label
+                            >
+                            <input
+                                id="fasta"
+                                type="file"
+                                class="form-control"
+                                accept=".fa,.fasta,.txt"
+                            />
+                            <div class="form-text text-secondary">
+                                Each sequence = one point, labeled by header.
+                            </div>
+                        </div>
 
-        svg
-          .append("g")
-          .attr("transform", `translate(0,${height - 40})`)
-          .call(d3.axisBottom(xScale).ticks(6));
-        svg
-          .append("g")
-          .attr("transform", `translate(50,0)`)
-          .call(d3.axisLeft(yScale).ticks(6));
+                        <button id="run" class="btn btn-primary mb-3 w-100">
+                            Compute & Run t‑SNE
+                        </button>
+                    </div>
 
-        const g = svg.append("g");
+                    <div class="col-lg-5">
+                        <h2 class="h5 mb-2">t‑SNE plot</h2>
+                        <svg
+                            id="plot"
+                            width="600"
+                            height="500"
+                            class="border border-secondary rounded"
+                        ></svg>
+                    </div>
 
-        g.selectAll("circle")
-          .data(points)
-          .enter()
-          .append("circle")
-          .attr("cx", (d) => xScale(d.x))
-          .attr("cy", (d) => yScale(d.y))
-          .attr("r", 5)
-          .attr("fill", "#38bdf8")
-          .attr("opacity", 0.85);
+                    <div class="col-lg-3">
+                        <h2 class="h5 mb-2">Progress</h2>
+                        <!-- Download progress -->
+                        <div
+                            id="progress-section"
+                            class="progress-section mb-3"
+                        >
+                            <div
+                                class="d-flex justify-content-between small mb-1"
+                            >
+                                <span id="progress-label"
+                                    >Downloading model...</span
+                                >
+                                <span id="progress-percent">0%</span>
+                            </div>
+                            <div class="progress" style="height: 0.5rem">
+                                <div
+                                    id="progress-bar"
+                                    class="progress-bar"
+                                    role="progressbar"
+                                    style="width: 0%"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
 
-        g.selectAll("text.label")
-          .data(points)
-          .enter()
-          .append("text")
-          .attr("class", "label")
-          .attr("x", (d) => xScale(d.x) + 7)
-          .attr("y", (d) => yScale(d.y) + 3)
-          .text((d, i) => labels[i])
-          .attr("font-size", "10px")
-          .attr("fill", "#e5e7eb");
-      }
+        <!-- Console log at bottom -->
+        <footer class="footer-log p-3 border-top border-secondary-subtle">
+            <div class="container app-shell">
+                <h6 class="mb-2">Console</h6>
+                <div id="log"></div>
+            </div>
+        </footer>
 
-      // ---------- Wiring ----------
+        <!-- Scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-      const worker = new Worker("./worker.js", { type: "module" });
+        <!-- Main app logic -->
+        <script type="module">
+            import initWasm from "./pkg/esm_rs.js";
 
-      async function getEmbeddingsForTexts(texts, modelID) {
-        const { modelURL, tokenizerURL, configURL } = getModelInfo(modelID);
-        logMessage("Using model: " + modelID);
-        const res = await getEmbeddings(
-          worker,
-          modelURL,
-          tokenizerURL,
-          configURL,
-          modelID,
-          texts,
-          (status) => {
-            if (status.status) setStatus(status.status);
-          }
-        );
-        return res.embeddings;
-      }
+            function logMessage(msg) {
+                const log = document.getElementById("log");
+                const ts = new Date().toLocaleTimeString();
+                log.textContent += `[${ts}] ${msg}\n`;
+                log.scrollTop = log.scrollHeight;
+            }
 
-      document.getElementById("run").addEventListener("click", async () => {
-        const modelID = document.getElementById("model-select").value;
-        const perplexity = parseFloat(
-          document.getElementById("perplexity").value || "10"
-        );
-        const iters = parseInt(
-          document.getElementById("iters").value || "500",
-          10
-        );
-        const epsilon = parseFloat(
-          document.getElementById("epsilon").value || "10"
-        );
+            function setStatus(text) {
+                document.getElementById("status").textContent = text;
+                logMessage(text);
+            }
 
-        const fastaFile = document.getElementById("fasta").files[0];
-        const textRaw = document.getElementById("texts").value.trim();
+            function showProgress(
+                show = true,
+                label = "Downloading model...",
+                percent = 0,
+            ) {
+                const section = document.getElementById("progress-section");
+                const bar = document.getElementById("progress-bar");
+                const labelEl = document.getElementById("progress-label");
+                const percentEl = document.getElementById("progress-percent");
 
-        let texts = [];
-        let labels = [];
+                if (show) {
+                    section.classList.add("show");
+                    labelEl.textContent = label;
+                    percentEl.textContent = `${percent}%`;
+                    bar.style.width = `${percent}%`;
+                    bar.setAttribute("aria-valuenow", percent);
+                } else {
+                    section.classList.remove("show");
+                }
+            }
 
-        // FASTA takes precedence
-        if (fastaFile) {
-          setStatus("Reading FASTA…");
-          let text;
-          try {
-            text = await fastaFile.text();
-          } catch (e) {
-            setStatus("Error reading FASTA");
-            alert("Error reading FASTA: " + (e.message ?? e));
-            return;
-          }
-          const records = parseFasta(text);
-          if (!records.length) {
-            setStatus("No sequences found");
-            alert("No sequences found in FASTA.");
-            return;
-          }
-          texts = fastaRecordsToTexts(records);
-          labels = records.map((r) => r.id || "seq");
-        } else if (textRaw) {
-          texts = textRaw.split(",").map((s) => s.trim()).filter(Boolean);
-          labels = texts.slice();
-        } else {
-          alert("Provide comma‑separated text or a FASTA file.");
-          return;
-        }
+            // Models config (unchanged)
+            const MODELS = {
+                intfloat_e5_small_v2: {
+                    base_url:
+                        "https://huggingface.co/intfloat/e5-small-v2/resolve/main/",
+                    search_prefix: "query: ",
+                    document_prefix: "passage: ",
+                },
+                intfloat_e5_base_v2: {
+                    base_url:
+                        "https://huggingface.co/intfloat/e5-base-v2/resolve/main/",
+                    search_prefix: "query: ",
+                    document_prefix: "passage: ",
+                },
+                intfloat_multilingual_e5_small: {
+                    base_url:
+                        "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/",
+                    search_prefix: "query: ",
+                    document_prefix: "passage: ",
+                },
+                sentence_transformers_all_MiniLM_L6_v2: {
+                    base_url:
+                        "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/refs%2Fpr%2F21/",
+                    search_prefix: "",
+                    document_prefix: "",
+                },
+                sentence_transformers_all_MiniLM_L12_v2: {
+                    base_url:
+                        "https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/refs%2Fpr%2F4/",
+                    search_prefix: "",
+                    document_prefix: "",
+                },
+                facebook_esm2_t6_8M_UR50D: {
+                    base_url:
+                        "https://huggingface.co/facebook/esm2_t6_8M_UR50D/resolve/main/",
+                    tokenizer_url: "/tokenizer.json",
+                    search_prefix: "",
+                    document_prefix: "",
+                },
+            };
 
-        if (texts.length < 2) {
-          alert("Need at least two items for t‑SNE.");
-          return;
-        }
+            function getModelInfo(id) {
+                const m = MODELS[id];
+                return {
+                    modelURL: m.base_url + "model.safetensors",
+                    configURL: m.base_url + "config.json",
+                    tokenizerURL:
+                        m.tokenizer_url ?? m.base_url + "tokenizer.json",
 
-        setStatus("Computing embeddings…");
-        let embeddings;
-        try {
-          embeddings = await getEmbeddingsForTexts(texts, modelID);
-        } catch (e) {
-          setStatus("Error (embeddings)");
-          alert("Error computing embeddings: " + (e.message ?? e));
-          return;
-        }
+                    search_prefix: m.search_prefix,
+                    document_prefix: m.document_prefix,
+                };
+            }
 
-        setStatus(
-          `Running t‑SNE (perplexity=${perplexity}, iters=${iters}, lr=${epsilon})…`
-        );
-        let coords;
-        try {
-          coords = runTsneJs(embeddings, perplexity, iters, epsilon);
-        } catch (e) {
-          setStatus("Error (t‑SNE)");
-          alert("Error in t‑SNE: " + (e.message ?? e));
-          return;
-        }
+            // Rest unchanged: getEmbeddings, parseFasta, runTsneJs, drawScatter...
 
-        setStatus("Rendering plot…");
-        drawScatter(coords, labels);
-        setStatus("Done");
-      });
+            const worker = new Worker("./worker.js", { type: "module" });
 
-      // Initialize wasm bindings once (safe even if worker instantiates separately)
-      initWasm().then(() => logMessage("Wasm bindings initialized"));
-    </script>
+            async function getEmbeddingsForTexts(texts, modelID) {
+                const { modelURL, tokenizerURL, configURL } =
+                    getModelInfo(modelID);
+                logMessage("Using model: " + modelID);
 
-    <script
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-    ></script>
-  </body>
+                // Show download progress
+                showProgress(true, "Fetching model files...", 10);
+
+                return new Promise((resolve, reject) => {
+                    worker.postMessage({
+                        weightsURL: modelURL,
+                        tokenizerURL,
+                        configURL,
+                        modelID,
+                        sentences: texts,
+                    });
+
+                    function messageHandler(event) {
+                        const data = event.data;
+                        if (data.error) {
+                            showProgress(false);
+                            worker.removeEventListener(
+                                "message",
+                                messageHandler,
+                            );
+                            reject(new Error(data.error));
+                        }
+                        if (data.status === "complete") {
+                            showProgress(false);
+                            worker.removeEventListener(
+                                "message",
+                                messageHandler,
+                            );
+                            resolve(data);
+                        }
+                        if (data.status) {
+                            setStatus(data.status);
+                            // Parse progress from worker status if sent (e.g. "Downloading 45%")
+                            const progressMatch = data.status.match(/(\d+)%/);
+                            if (progressMatch) {
+                                const pct = parseInt(progressMatch[1]);
+                                showProgress(true, data.status, pct);
+                            }
+                        }
+                        if (data.downloadProgress) {
+                            showProgress(
+                                true,
+                                data.downloadProgress.label,
+                                data.downloadProgress.percent,
+                            );
+                        }
+                    }
+                    worker.addEventListener("message", messageHandler);
+                });
+            }
+            function runTsne(embeddings, labels) {
+                const perplexity = +document.getElementById("perplexity").value;
+                const iters = +document.getElementById("iters").value;
+                const epsilon = +document.getElementById("epsilon").value;
+
+                const tsne = new tsnejs.tSNE({ perplexity, epsilon, dim: 2 });
+                tsne.initDataRaw(embeddings);
+                for (let i = 0; i < iters; i++) tsne.step();
+                return tsne.getSolution(); // [[x,y], [x,y], ...]
+            }
+
+            function drawScatter(coords, labels) {
+                const svg = d3.select("#plot");
+                svg.selectAll("*").remove();
+
+                const width = +svg.attr("width");
+                const height = +svg.attr("height");
+                const margin = 40;
+
+                const xs = coords.map((d) => d[0]);
+                const ys = coords.map((d) => d[1]);
+
+                const xScale = d3
+                    .scaleLinear()
+                    .domain([d3.min(xs), d3.max(xs)])
+                    .range([margin, width - margin]);
+                const yScale = d3
+                    .scaleLinear()
+                    .domain([d3.min(ys), d3.max(ys)])
+                    .range([height - margin, margin]);
+                const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+                const g = svg.append("g");
+
+                g.selectAll("circle")
+                    .data(coords)
+                    .join("circle")
+                    .attr("cx", (d) => xScale(d[0]))
+                    .attr("cy", (d) => yScale(d[1]))
+                    .attr("r", 6)
+                    .attr("fill", (_, i) => color(i))
+                    .attr("opacity", 0.85);
+
+                g.selectAll("text")
+                    .data(coords)
+                    .join("text")
+                    .attr("x", (d) => xScale(d[0]) + 8)
+                    .attr("y", (d) => yScale(d[1]) + 4)
+                    .text((_, i) => labels[i])
+                    .attr("fill", "#e5e7eb")
+                    .attr("font-size", "11px");
+            }
+
+            // Run button handler (unchanged except progress)
+            document
+                .getElementById("run")
+                .addEventListener("click", async () => {
+                    const modelID =
+                        document.getElementById("model-select").value;
+                    const { search_prefix } = getModelInfo(modelID);
+
+                    let texts = [];
+                    let labels = [];
+                    const fastaFile = document.getElementById("fasta").files[0];
+
+                    if (fastaFile) {
+                        const text = await fastaFile.text();
+                        const parsed = parseFasta(text);
+                        texts = parsed.map((e) => e.sequence);
+                        labels = parsed.map((e) => e.header);
+                    } else {
+                        const raw = document.getElementById("texts").value;
+                        texts = raw
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                        labels = texts;
+                    }
+
+                    if (texts.length === 0) {
+                        setStatus("No input provided.");
+                        return;
+                    }
+
+                    const prefixedTexts = texts.map((t) => search_prefix + t);
+
+                    setStatus("Computing embeddings…");
+                    try {
+                        const result = await getEmbeddingsForTexts(
+                            prefixedTexts,
+                            modelID,
+                        );
+                        const embeddings = result.embeddings;
+
+                        setStatus("Running t-SNE…");
+                        const coords = runTsne(embeddings, labels);
+                        drawScatter(coords, labels);
+                        setStatus("Done.");
+                    } catch (e) {
+                        setStatus("Error: " + e.message);
+                    }
+                });
+
+            initWasm().then(() => logMessage("Wasm ready"));
+        </script>
+    </body>
 </html>

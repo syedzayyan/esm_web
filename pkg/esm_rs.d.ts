@@ -5,7 +5,12 @@ export class Model {
     free(): void;
     [Symbol.dispose](): void;
     get_embeddings(input: any): any;
-    constructor(weights: Uint8Array, tokenizer: Uint8Array, config: Uint8Array);
+    constructor(weights: Uint8Array, tokenizer_bytes: Uint8Array, config_bytes: Uint8Array);
+}
+
+export enum ModelType {
+    Bert = 0,
+    Esm2 = 1,
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
