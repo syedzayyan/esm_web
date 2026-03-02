@@ -237,7 +237,7 @@ impl ESM2Layer {
             .intermediate_act
             .forward(&self.intermediate.forward(&normed)?)?;
         let h = self.dropout.forward(&self.output.forward(&h)?)?;
-        (x + h)
+        x + h
     }
 }
 

@@ -447,6 +447,26 @@
 
                     <label for="fasta">FASTA file</label>
                     <input id="fasta" type="file" accept=".fa,.fasta,.txt" />
+                    <button
+                        id="clear-fasta"
+                        type="button"
+                        style="
+                            padding: 0.38rem 0.65rem;
+                            background: none;
+                            border: 1px solid var(--border);
+                            border-radius: 0.4rem;
+                            color: var(--muted);
+                            cursor: pointer;
+                            font-size: 0.78rem;
+                            white-space: nowrap;
+                            transition:
+                                border-color 0.15s,
+                                color 0.15s;
+                        "
+                        title="Clear file"
+                    >
+                        ✕ Clear
+                    </button>
                     <p class="hint">Each sequence → one labelled point.</p>
 
                     <button id="run">Compute &amp; Run t‑SNE</button>
@@ -518,6 +538,13 @@
                 .matchMedia("(prefers-color-scheme: dark)")
                 .addEventListener("change", (e) => {
                     applyTheme(e.matches ? "dark" : "light");
+                });
+            document
+                .getElementById("clear-fasta")
+                .addEventListener("click", () => {
+                    const input = document.getElementById("fasta");
+                    input.value = ""; // resets the file picker
+                    logMsg("FASTA file cleared", "info");
                 });
 
             /* ── Logging ── */
