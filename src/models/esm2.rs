@@ -226,14 +226,18 @@ impl ESM2Layer {
     }
 
     fn forward(&self, x: &Tensor, attention_mask: &Tensor) -> Result<Tensor> {
-        let attn_out = self.attention.forward(x, attention_mask)?;
-        let x = self.attention_layer_norm.forward(&(x + attn_out)?)?;
+        // Pre-norm: normalise input before attention, then residual
+        let normed = self.attention_layer_norm.forward(x)?;
+        let attn_out = self.attention.forward(&normed, attention_mask)?;
+        let x = (x + attn_out)?;
 
+        // Pre-norm: normalise before FFN, then residual
+        let normed = self.output_layer_norm.forward(&x)?;
         let h = self
             .intermediate_act
-            .forward(&self.intermediate.forward(&x)?)?;
+            .forward(&self.intermediate.forward(&normed)?)?;
         let h = self.dropout.forward(&self.output.forward(&h)?)?;
-        self.output_layer_norm.forward(&(x + h)?)
+        (x + h)
     }
 }
 

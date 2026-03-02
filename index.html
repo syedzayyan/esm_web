@@ -1,338 +1,580 @@
 <!doctype html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
     <head>
         <meta charset="utf-8" />
         <title>Embedding t‑SNE Visualizer</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-        <!-- Bootstrap 5 -->
-        <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
-        <!-- htmx -->
-        <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-        <!-- D3 -->
         <script src="https://d3js.org/d3.v7.min.js"></script>
-        <!-- tsne.js -->
         <script src="./tsne.js"></script>
 
         <style>
-            body {
-                background: radial-gradient(
-                    circle at top,
-                    #0f172a,
-                    #020617 55%
-                );
-                color: #e5e7eb;
+            /* ── Theme tokens ── */
+            :root {
+                --bg: #020617;
+                --bg-panel: #0f172a;
+                --border: #1e293b;
+                --text: #e2e8f0;
+                --muted: #64748b;
+                --accent: #6366f1;
+                --accent-hv: #818cf8;
+                --nav-bg: rgba(15, 23, 42, 0.92);
+                --input-bg: #020617;
+                --grid-line: #0a0f1e;
+                --dot-label: #94a3b8;
             }
-            .app-shell {
-                max-width: 1200px;
+            [data-theme="light"] {
+                --bg: #f1f5f9;
+                --bg-panel: #ffffff;
+                --border: #cbd5e1;
+                --text: #0f172a;
+                --muted: #64748b;
+                --accent: #6366f1;
+                --accent-hv: #4f46e5;
+                --nav-bg: rgba(255, 255, 255, 0.92);
+                --input-bg: #f8fafc;
+                --grid-line: #e2e8f0;
+                --dot-label: #475569;
+            }
+
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+            }
+
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    sans-serif;
+                font-size: 14px;
+                display: flex;
+                flex-direction: column;
+                min-height: 100vh;
+                transition:
+                    background 0.2s,
+                    color 0.2s;
+            }
+
+            /* ── Nav ── */
+            nav {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 1.5rem;
+                height: 52px;
+                background: var(--nav-bg);
+                border-bottom: 1px solid var(--border);
+                backdrop-filter: blur(10px);
+                position: sticky;
+                top: 0;
+                z-index: 10;
+            }
+            nav .brand {
+                font-size: 1rem;
+                font-weight: 600;
+                color: var(--text);
+                text-decoration: none;
+            }
+            .nav-right {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+            #status {
+                font-size: 0.75rem;
+                color: var(--muted);
+            }
+
+            /* ── Theme toggle button ── */
+            #theme-toggle {
+                background: none;
+                border: 1px solid var(--border);
+                border-radius: 0.4rem;
+                color: var(--muted);
+                cursor: pointer;
+                padding: 0.25rem 0.55rem;
+                font-size: 0.78rem;
+                display: flex;
+                align-items: center;
+                gap: 0.3rem;
+                transition:
+                    border-color 0.15s,
+                    color 0.15s;
+            }
+            #theme-toggle:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            #theme-toggle .icon {
+                font-size: 1rem;
+                line-height: 1;
+            }
+
+            /* ── Layout ── */
+            main {
+                flex: 1;
+                padding: 1.5rem;
+                max-width: 1320px;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .layout {
+                display: grid;
+                grid-template-columns: 300px 1fr 210px;
+                gap: 1.25rem;
+            }
+            @media (max-width: 860px) {
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            .panel {
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 0.75rem;
+                padding: 1.25rem;
+            }
+            .panel h2 {
+                font-size: 0.67rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: var(--muted);
+                margin: 0 0 1rem;
+            }
+
+            /* ── Form ── */
+            label {
+                display: block;
+                font-size: 0.77rem;
+                font-weight: 500;
+                color: var(--muted);
+                margin-bottom: 0.28rem;
+            }
+            select,
+            input[type="number"],
+            input[type="file"],
+            textarea {
+                width: 100%;
+                background: var(--input-bg);
+                border: 1px solid var(--border);
+                border-radius: 0.4rem;
+                color: var(--text);
+                padding: 0.45rem 0.6rem;
+                font-size: 0.82rem;
+                margin-bottom: 0.9rem;
+                outline: none;
+                transition: border-color 0.15s;
+                font-family: inherit;
+            }
+            select:focus,
+            input:focus,
+            textarea:focus {
+                border-color: var(--accent);
+            }
+            textarea {
+                resize: vertical;
+                min-height: 75px;
+            }
+            input[type="file"] {
+                padding: 0.3rem 0.5rem;
+                cursor: pointer;
+            }
+            .hint {
+                font-size: 0.69rem;
+                color: var(--muted);
+                margin-top: -0.75rem;
+                margin-bottom: 0.85rem;
+            }
+
+            .grid3 {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 0.6rem;
+            }
+            .grid3 input {
+                margin-bottom: 0;
+            }
+
+            #run {
+                width: 100%;
+                padding: 0.6rem;
+                background: var(--accent);
+                color: #fff;
+                border: none;
+                border-radius: 0.5rem;
+                font-size: 0.88rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition:
+                    background 0.15s,
+                    opacity 0.15s;
+                margin-top: 0.5rem;
+            }
+            #run:hover {
+                background: var(--accent-hv);
+            }
+            #run:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+
+            /* ── Plot ── */
+            .plot-panel {
+                display: flex;
+                flex-direction: column;
+                min-height: 520px;
             }
             #plot {
-                background-color: #020617;
+                width: 100%;
+                flex: 1;
+                min-height: 490px;
+                overflow: visible;
             }
 
-            /* Console at bottom */
-            #log {
-                background-color: #020617;
-                border: 1px solid #1f2933;
-                border-radius: 0.5rem;
-                padding: 0.5rem 0.75rem;
-                font-family:
-                    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-                    "Liberation Mono", "Courier New", monospace;
-                font-size: 0.8rem;
-                height: 150px;
-                overflow-y: auto;
-                margin-top: auto;
+            .axis text {
+                fill: var(--muted);
+                font-size: 10px;
+            }
+            .axis path,
+            .axis line {
+                stroke: var(--border);
+            }
+            .grid line {
+                stroke: var(--grid-line);
+                stroke-dasharray: 3, 3;
+            }
+            .grid path {
+                stroke: none;
+            }
+            .axis-label {
+                fill: var(--muted);
+                font-size: 11px;
             }
 
-            /* Progress bar */
-            .progress-section {
+            /* ── Progress ── */
+            .progress-wrap {
                 display: none;
+                margin-bottom: 1rem;
             }
-            .progress-section.show {
+            .progress-wrap.show {
                 display: block;
             }
-            .download-progress {
-                height: 0.5rem;
+            .progress-meta {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.7rem;
+                color: var(--muted);
+                margin-bottom: 0.3rem;
+            }
+            progress {
+                width: 100%;
+                height: 6px;
+                border-radius: 3px;
+                border: none;
+                background: var(--border);
+                display: block;
+            }
+            progress::-webkit-progress-bar {
+                background: var(--border);
+                border-radius: 3px;
+            }
+            progress::-webkit-progress-value {
+                background: var(--accent);
+                border-radius: 3px;
+            }
+            progress::-moz-progress-bar {
+                background: var(--accent);
             }
 
-            /* Footer sticky */
-            .footer-log {
+            .idle-msg {
+                font-size: 0.78rem;
+                color: var(--muted);
+                margin: 0;
+                line-height: 1.5;
+            }
+
+            /* ── Console footer ── */
+            footer.console-footer {
                 position: sticky;
                 bottom: 0;
-                background: rgba(15, 23, 42, 0.95);
-                backdrop-filter: blur(10px);
+                background: rgba(2, 6, 23, 0.97);
+                backdrop-filter: blur(8px);
+                border-top: 1px solid var(--border);
+                padding: 0.6rem 1.5rem 0.75rem;
+            }
+            [data-theme="light"] footer.console-footer {
+                background: rgba(241, 245, 249, 0.97);
+            }
+            .console-title {
+                font-size: 0.65rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: #475569;
+                margin: 0 0 0.3rem;
+            }
+            #log {
+                height: 110px;
+                overflow-y: auto;
+                font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+                font-size: 0.74rem;
+                color: var(--muted);
+            }
+            #log .ts {
+                color: #334155;
+            }
+            .log-err {
+                color: #f87171;
+            }
+            .log-ok {
+                color: #34d399;
+            }
+            .log-info {
+                color: #94a3b8;
+            }
+
+            /* ── Tooltip ── */
+            .ttip {
+                position: fixed;
+                pointer-events: none;
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 0.75rem;
+                color: var(--text);
+                display: none;
+                z-index: 200;
+                max-width: 260px;
+                word-break: break-all;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             }
         </style>
     </head>
-    <body class="d-flex flex-column min-vh-100">
-        <nav
-            class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary"
-        >
-            <div class="container app-shell">
-                <a class="navbar-brand fw-semibold" href="#"
-                    >Embedding t‑SNE Visualizer</a
-                >
-                <span
-                    id="status"
-                    class="navbar-text small text-secondary ms-auto"
-                    >Idle</span
-                >
+    <body>
+        <nav>
+            <a class="brand" href="#">Embedding t‑SNE Visualizer</a>
+            <div class="nav-right">
+                <span id="status">Idle</span>
+                <button id="theme-toggle" aria-label="Toggle theme">
+                    <span class="icon" id="theme-icon">🌙</span>
+                    <span id="theme-label">Light</span>
+                </button>
             </div>
         </nav>
 
-        <main class="flex-grow-1 py-3">
-            <div class="container app-shell">
-                <div class="row g-3">
-                    <div class="col-lg-4">
-                        <h2 class="h5 mb-2">Input</h2>
+        <main>
+            <div class="layout">
+                <!-- LEFT -->
+                <div class="panel">
+                    <h2>Configuration</h2>
 
-                        <!-- Model selection -->
-                        <div class="mb-3">
-                            <label for="model-select" class="form-label"
-                                >Model</label
-                            >
-                            <select
-                                id="model-select"
-                                class="form-select form-select-sm"
-                            >
-                                <option value="facebook_esm2_t6_8M_UR50D">
-                                    facebook/esm2_t6_8M_UR50D
-                                </option>
-                                <option value="intfloat_e5_small_v2" selected>
-                                    intfloat/e5-small-v2
-                                </option>
-                                <option value="intfloat_e5_base_v2">
-                                    intfloat/e5-base-v2
-                                </option>
-                                <option value="intfloat_multilingual_e5_small">
-                                    intfloat/multilingual-e5-small
-                                </option>
-                                <option
-                                    value="sentence_transformers_all_MiniLM_L6_v2"
-                                >
-                                    all-MiniLM-L6-v2
-                                </option>
-                                <option
-                                    value="sentence_transformers_all_MiniLM_L12_v2"
-                                >
-                                    all-MiniLM-L12-v2
-                                </option>
-                            </select>
-                            <div class="form-text text-secondary">
-                                Select embedding model
-                            </div>
-                        </div>
+                    <label for="model-select">Embedding model</label>
+                    <select id="model-select">
+                        <option value="facebook_esm2_t6_8M_UR50D">
+                            facebook/esm2_t6_8M_UR50D
+                        </option>
+                        <option value="intfloat_e5_small_v2" selected>
+                            intfloat/e5-small-v2
+                        </option>
+                        <option value="intfloat_e5_base_v2">
+                            intfloat/e5-base-v2
+                        </option>
+                        <option value="intfloat_multilingual_e5_small">
+                            intfloat/multilingual-e5-small
+                        </option>
+                        <option value="sentence_transformers_all_MiniLM_L6_v2">
+                            all-MiniLM-L6-v2
+                        </option>
+                        <option value="sentence_transformers_all_MiniLM_L12_v2">
+                            all-MiniLM-L12-v2
+                        </option>
+                    </select>
 
-                        <!-- t-SNE hyperparameters -->
-                        <h3 class="h6 mt-3">t‑SNE hyperparameters</h3>
-                        <div class="row g-2 mb-3">
-                            <div class="col-4">
-                                <label
-                                    for="perplexity"
-                                    class="form-label form-label-sm"
-                                    >Perplexity</label
-                                >
-                                <input
-                                    id="perplexity"
-                                    type="number"
-                                    class="form-control form-control-sm"
-                                    value="10"
-                                    min="1"
-                                    step="1"
-                                />
-                            </div>
-                            <div class="col-4">
-                                <label
-                                    for="iters"
-                                    class="form-label form-label-sm"
-                                    >Iterations</label
-                                >
-                                <input
-                                    id="iters"
-                                    type="number"
-                                    class="form-control form-control-sm"
-                                    value="500"
-                                    min="10"
-                                    step="10"
-                                />
-                            </div>
-                            <div class="col-4">
-                                <label
-                                    for="epsilon"
-                                    class="form-label form-label-sm"
-                                    >Learning rate</label
-                                >
-                                <input
-                                    id="epsilon"
-                                    type="number"
-                                    class="form-control form-control-sm"
-                                    value="10"
-                                    min="1"
-                                    step="1"
-                                />
-                            </div>
-                        </div>
-
-                        <!-- Comma-separated text input -->
-                        <div class="mb-3">
-                            <label for="texts" class="form-label"
-                                >Comma‑separated texts</label
-                            >
-                            <textarea
-                                id="texts"
-                                class="form-control"
-                                rows="3"
-                                placeholder="cat, dog, banana, car"
-                            ></textarea>
-                            <div class="form-text text-secondary">
-                                If both text and FASTA provided, FASTA takes
-                                precedence.
-                            </div>
-                        </div>
-
-                        <!-- FASTA file input -->
-                        <div class="mb-3">
-                            <label for="fasta" class="form-label"
-                                >FASTA file</label
-                            >
+                    <label>t‑SNE hyperparameters</label>
+                    <div class="grid3">
+                        <div>
+                            <label for="perplexity">Perplexity</label>
                             <input
-                                id="fasta"
-                                type="file"
-                                class="form-control"
-                                accept=".fa,.fasta,.txt"
+                                id="perplexity"
+                                type="number"
+                                value="10"
+                                min="1"
+                                step="1"
                             />
-                            <div class="form-text text-secondary">
-                                Each sequence = one point, labeled by header.
-                            </div>
                         </div>
-
-                        <button id="run" class="btn btn-primary mb-3 w-100">
-                            Compute & Run t‑SNE
-                        </button>
-                    </div>
-
-                    <div class="col-lg-5">
-                        <h2 class="h5 mb-2">t‑SNE plot</h2>
-                        <svg
-                            id="plot"
-                            width="600"
-                            height="500"
-                            class="border border-secondary rounded"
-                        ></svg>
-                    </div>
-
-                    <div class="col-lg-3">
-                        <h2 class="h5 mb-2">Progress</h2>
-                        <!-- Download progress -->
-                        <div
-                            id="progress-section"
-                            class="progress-section mb-3"
-                        >
-                            <div
-                                class="d-flex justify-content-between small mb-1"
-                            >
-                                <span id="progress-label"
-                                    >Downloading model...</span
-                                >
-                                <span id="progress-percent">0%</span>
-                            </div>
-                            <div class="progress" style="height: 0.5rem">
-                                <div
-                                    id="progress-bar"
-                                    class="progress-bar"
-                                    role="progressbar"
-                                    style="width: 0%"
-                                ></div>
-                            </div>
+                        <div>
+                            <label for="iters">Iterations</label>
+                            <input
+                                id="iters"
+                                type="number"
+                                value="500"
+                                min="10"
+                                step="10"
+                            />
+                        </div>
+                        <div>
+                            <label for="epsilon">LR</label>
+                            <input
+                                id="epsilon"
+                                type="number"
+                                value="10"
+                                min="1"
+                                step="1"
+                            />
                         </div>
                     </div>
+
+                    <label for="texts">Comma‑separated texts</label>
+                    <textarea
+                        id="texts"
+                        placeholder="cat, dog, banana, car, airplane, tree"
+                    ></textarea>
+                    <p class="hint">
+                        FASTA input takes precedence if provided.
+                    </p>
+
+                    <label for="fasta">FASTA file</label>
+                    <input id="fasta" type="file" accept=".fa,.fasta,.txt" />
+                    <p class="hint">Each sequence → one labelled point.</p>
+
+                    <button id="run">Compute &amp; Run t‑SNE</button>
+                </div>
+
+                <!-- CENTRE -->
+                <div class="panel plot-panel">
+                    <h2>t‑SNE projection</h2>
+                    <svg id="plot"></svg>
+                </div>
+
+                <!-- RIGHT -->
+                <div class="panel">
+                    <h2>Progress</h2>
+                    <div id="progress-section" class="progress-wrap">
+                        <div class="progress-meta">
+                            <span id="progress-label">Downloading…</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <progress
+                            id="progress-bar"
+                            value="0"
+                            max="100"
+                        ></progress>
+                    </div>
+                    <p class="idle-msg" id="idle-msg">
+                        Press <em>Compute &amp; Run t‑SNE</em> to begin.
+                    </p>
                 </div>
             </div>
         </main>
 
-        <!-- Console log at bottom -->
-        <footer class="footer-log p-3 border-top border-secondary-subtle">
-            <div class="container app-shell">
-                <h6 class="mb-2">Console</h6>
-                <div id="log"></div>
-            </div>
+        <div class="ttip" id="tooltip"></div>
+
+        <footer class="console-footer">
+            <p class="console-title">Console</p>
+            <div id="log"></div>
         </footer>
 
-        <!-- Scripts -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-        <!-- Main app logic -->
         <script type="module">
             import initWasm from "./pkg/esm_rs.js";
 
-            function logMessage(msg) {
-                const log = document.getElementById("log");
+            /* ── Theme ── */
+            const html = document.documentElement;
+            const toggleBtn = document.getElementById("theme-toggle");
+            const themeIcon = document.getElementById("theme-icon");
+            const themeLabel = document.getElementById("theme-label");
+
+            // Initialise from system preference
+            const prefersDark = window.matchMedia(
+                "(prefers-color-scheme: dark)",
+            ).matches;
+            let currentTheme = prefersDark ? "dark" : "light";
+            applyTheme(currentTheme);
+
+            function applyTheme(t) {
+                html.setAttribute("data-theme", t);
+                themeIcon.textContent = t === "dark" ? "🌙" : "☀️";
+                themeLabel.textContent = t === "dark" ? "Light" : "Dark";
+                currentTheme = t;
+            }
+
+            toggleBtn.addEventListener("click", () => {
+                applyTheme(currentTheme === "dark" ? "light" : "dark");
+            });
+
+            // Keep in sync if user changes OS preference while page is open
+            window
+                .matchMedia("(prefers-color-scheme: dark)")
+                .addEventListener("change", (e) => {
+                    applyTheme(e.matches ? "dark" : "light");
+                });
+
+            /* ── Logging ── */
+            const logEl = document.getElementById("log");
+            function logMsg(msg, kind = "info") {
                 const ts = new Date().toLocaleTimeString();
-                log.textContent += `[${ts}] ${msg}\n`;
-                log.scrollTop = log.scrollHeight;
+                const d = document.createElement("div");
+                d.innerHTML = `<span class="ts">[${ts}]</span> <span class="log-${kind}">${msg}</span>`;
+                logEl.appendChild(d);
+                logEl.scrollTop = logEl.scrollHeight;
             }
-
-            function setStatus(text) {
+            function setStatus(text, kind = "info") {
                 document.getElementById("status").textContent = text;
-                logMessage(text);
+                logMsg(text, kind);
             }
-
-            function showProgress(
-                show = true,
-                label = "Downloading model...",
-                percent = 0,
-            ) {
-                const section = document.getElementById("progress-section");
-                const bar = document.getElementById("progress-bar");
-                const labelEl = document.getElementById("progress-label");
-                const percentEl = document.getElementById("progress-percent");
-
+            function showProgress(show, label = "Working…", pct = 0) {
+                const sec = document.getElementById("progress-section");
+                const idle = document.getElementById("idle-msg");
                 if (show) {
-                    section.classList.add("show");
-                    labelEl.textContent = label;
-                    percentEl.textContent = `${percent}%`;
-                    bar.style.width = `${percent}%`;
-                    bar.setAttribute("aria-valuenow", percent);
+                    sec.classList.add("show");
+                    idle.style.display = "none";
+                    document.getElementById("progress-label").textContent =
+                        label;
+                    document.getElementById("progress-percent").textContent =
+                        pct + "%";
+                    document.getElementById("progress-bar").value = pct;
                 } else {
-                    section.classList.remove("show");
+                    sec.classList.remove("show");
+                    idle.style.display = "";
                 }
             }
 
-            // Models config (unchanged)
+            /* ── Models ── */
             const MODELS = {
                 intfloat_e5_small_v2: {
                     base_url:
                         "https://huggingface.co/intfloat/e5-small-v2/resolve/main/",
                     search_prefix: "query: ",
-                    document_prefix: "passage: ",
                 },
                 intfloat_e5_base_v2: {
                     base_url:
                         "https://huggingface.co/intfloat/e5-base-v2/resolve/main/",
                     search_prefix: "query: ",
-                    document_prefix: "passage: ",
                 },
                 intfloat_multilingual_e5_small: {
                     base_url:
                         "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/",
                     search_prefix: "query: ",
-                    document_prefix: "passage: ",
                 },
                 sentence_transformers_all_MiniLM_L6_v2: {
                     base_url:
                         "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/refs%2Fpr%2F21/",
                     search_prefix: "",
-                    document_prefix: "",
                 },
                 sentence_transformers_all_MiniLM_L12_v2: {
                     base_url:
                         "https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/refs%2Fpr%2F4/",
                     search_prefix: "",
-                    document_prefix: "",
                 },
                 facebook_esm2_t6_8M_UR50D: {
                     base_url:
@@ -340,7 +582,7 @@
                     tokenizer_url:
                         "https://raw.githubusercontent.com/syedzayyan/esm_web/refs/heads/main/tokenizer.json",
                     search_prefix: "",
-                    document_prefix: "",
+                    max_len: 512, // ← ESM2 hard cap to avoid wasm32 capacity overflow
                 },
             };
 
@@ -351,23 +593,43 @@
                     configURL: m.base_url + "config.json",
                     tokenizerURL:
                         m.tokenizer_url ?? m.base_url + "tokenizer.json",
-
                     search_prefix: m.search_prefix,
-                    document_prefix: m.document_prefix,
+                    max_len: m.max_len ?? null,
                 };
             }
 
-            // Rest unchanged: getEmbeddings, parseFasta, runTsneJs, drawScatter...
+            /* ── FASTA parser ── */
+            function parseFasta(raw) {
+                const results = [];
+                const chunks = raw
+                    .replace(/\r\n/g, "\n")
+                    .replace(/\r/g, "\n")
+                    .split(/^>/m);
+                for (const chunk of chunks) {
+                    const trimmed = chunk.trim();
+                    if (!trimmed) continue;
+                    const nl = trimmed.indexOf("\n");
+                    if (nl === -1) continue;
+                    const header = trimmed.slice(0, nl).trim();
+                    const sequence = trimmed
+                        .slice(nl + 1)
+                        .split("\n")
+                        .map((l) => l.trim())
+                        .filter((l) => l && !l.startsWith(";"))
+                        .join("");
+                    if (header && sequence) results.push({ header, sequence });
+                }
+                return results;
+            }
 
+            /* ── Worker ── */
             const worker = new Worker("./worker.js", { type: "module" });
 
-            async function getEmbeddingsForTexts(texts, modelID) {
+            async function getEmbeddings(texts, modelID) {
                 const { modelURL, tokenizerURL, configURL } =
                     getModelInfo(modelID);
-                logMessage("Using model: " + modelID);
-
-                // Show download progress
-                showProgress(true, "Fetching model files...", 10);
+                logMsg("Loading model: " + modelID);
+                showProgress(true, "Fetching model files…", 5);
 
                 return new Promise((resolve, reject) => {
                     worker.postMessage({
@@ -378,148 +640,224 @@
                         sentences: texts,
                     });
 
-                    function messageHandler(event) {
-                        const data = event.data;
-                        if (data.error) {
+                    function handler(ev) {
+                        const d = ev.data;
+                        if (d.error) {
                             showProgress(false);
-                            worker.removeEventListener(
-                                "message",
-                                messageHandler,
-                            );
-                            reject(new Error(data.error));
+                            worker.removeEventListener("message", handler);
+                            reject(new Error(d.error));
                         }
-                        if (data.status === "complete") {
+                        if (d.status === "complete") {
                             showProgress(false);
-                            worker.removeEventListener(
-                                "message",
-                                messageHandler,
-                            );
-                            resolve(data);
+                            worker.removeEventListener("message", handler);
+                            resolve(d);
                         }
-                        if (data.status) {
-                            setStatus(data.status);
-                            // Parse progress from worker status if sent (e.g. "Downloading 45%")
-                            const progressMatch = data.status.match(/(\d+)%/);
-                            if (progressMatch) {
-                                const pct = parseInt(progressMatch[1]);
-                                showProgress(true, data.status, pct);
-                            }
+                        if (d.status) {
+                            setStatus(d.status);
+                            const m = d.status.match(/(\d+)%/);
+                            if (m) showProgress(true, d.status, +m[1]);
                         }
-                        if (data.downloadProgress) {
+                        if (d.downloadProgress) {
                             showProgress(
                                 true,
-                                data.downloadProgress.label,
-                                data.downloadProgress.percent,
+                                d.downloadProgress.label,
+                                d.downloadProgress.percent,
                             );
                         }
                     }
-                    worker.addEventListener("message", messageHandler);
+                    worker.addEventListener("message", handler);
                 });
             }
-            function runTsne(embeddings, labels) {
+
+            /* ── t-SNE ── */
+            function runTsne(embeddings) {
                 const perplexity = +document.getElementById("perplexity").value;
                 const iters = +document.getElementById("iters").value;
                 const epsilon = +document.getElementById("epsilon").value;
-
                 const tsne = new tsnejs.tSNE({ perplexity, epsilon, dim: 2 });
                 tsne.initDataRaw(embeddings);
                 for (let i = 0; i < iters; i++) tsne.step();
-                return tsne.getSolution(); // [[x,y], [x,y], ...]
+                return tsne.getSolution();
             }
 
+            /* ── D3 scatter — hover-only labels ── */
             function drawScatter(coords, labels) {
-                const svg = d3.select("#plot");
-                svg.selectAll("*").remove();
+                const svgEl = document.getElementById("plot");
+                const d3svg = d3.select(svgEl);
+                d3svg.selectAll("*").remove();
 
-                const width = +svg.attr("width");
-                const height = +svg.attr("height");
-                const margin = 40;
+                const W = svgEl.clientWidth || 560;
+                const H = svgEl.clientHeight || 490;
+                const M = { top: 28, right: 28, bottom: 52, left: 52 };
+                const iW = W - M.left - M.right;
+                const iH = H - M.top - M.bottom;
 
-                const xs = coords.map((d) => d[0]);
-                const ys = coords.map((d) => d[1]);
+                d3svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+                const xs = coords.map((c) => c[0]);
+                const ys = coords.map((c) => c[1]);
+
+                function paddedDomain(arr) {
+                    const mn = d3.min(arr),
+                        mx = d3.max(arr);
+                    const p = (mx - mn || 1) * 0.1;
+                    return [mn - p, mx + p];
+                }
 
                 const xScale = d3
                     .scaleLinear()
-                    .domain([d3.min(xs), d3.max(xs)])
-                    .range([margin, width - margin]);
+                    .domain(paddedDomain(xs))
+                    .range([0, iW]);
                 const yScale = d3
                     .scaleLinear()
-                    .domain([d3.min(ys), d3.max(ys)])
-                    .range([height - margin, margin]);
+                    .domain(paddedDomain(ys))
+                    .range([iH, 0]);
                 const color = d3.scaleOrdinal(d3.schemeTableau10);
 
-                const g = svg.append("g");
+                const g = d3svg
+                    .append("g")
+                    .attr("transform", `translate(${M.left},${M.top})`);
+
+                g.append("g")
+                    .attr("class", "grid")
+                    .attr("transform", `translate(0,${iH})`)
+                    .call(d3.axisBottom(xScale).tickSize(-iH).tickFormat(""));
+                g.append("g")
+                    .attr("class", "grid")
+                    .call(d3.axisLeft(yScale).tickSize(-iW).tickFormat(""));
+
+                g.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", `translate(0,${iH})`)
+                    .call(d3.axisBottom(xScale).ticks(5));
+                g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("x", iW / 2)
+                    .attr("y", iH + 44)
+                    .attr("text-anchor", "middle")
+                    .text("t-SNE Dimension 1");
+
+                g.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisLeft(yScale).ticks(5));
+                g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("x", -iH / 2)
+                    .attr("y", -44)
+                    .attr("text-anchor", "middle")
+                    .text("t-SNE Dimension 2");
+
+                const tooltip = document.getElementById("tooltip");
 
                 g.selectAll("circle")
                     .data(coords)
                     .join("circle")
                     .attr("cx", (d) => xScale(d[0]))
                     .attr("cy", (d) => yScale(d[1]))
-                    .attr("r", 6)
+                    .attr("r", 7)
                     .attr("fill", (_, i) => color(i))
-                    .attr("opacity", 0.85);
+                    .attr("opacity", 0.88)
+                    .attr("stroke", "var(--bg)")
+                    .attr("stroke-width", 1.5)
+                    .style("cursor", "pointer")
+                    .on("mousemove", function (ev, d) {
+                        const i = coords.indexOf(d);
+                        const lbl = labels[i];
+                        // Show full label in tooltip — truncated display only in tooltip title
+                        tooltip.style.display = "block";
+                        tooltip.style.left = ev.clientX + 14 + "px";
+                        tooltip.style.top = ev.clientY - 10 + "px";
+                        tooltip.innerHTML = `<strong style="color:${color(i)}">#${i + 1}</strong> ${lbl}`;
+                    })
+                    .on("mouseleave", () => (tooltip.style.display = "none"));
 
-                g.selectAll("text")
-                    .data(coords)
-                    .join("text")
-                    .attr("x", (d) => xScale(d[0]) + 8)
-                    .attr("y", (d) => yScale(d[1]) + 4)
-                    .text((_, i) => labels[i])
-                    .attr("fill", "#e5e7eb")
-                    .attr("font-size", "11px");
+                // No static dot-labels — tooltip is the sole label mechanism,
+                // preventing overlap clutter on dense plots.
             }
 
-            // Run button handler (unchanged except progress)
+            /* ── Button handler ── */
             document
                 .getElementById("run")
                 .addEventListener("click", async () => {
+                    const btn = document.getElementById("run");
                     const modelID =
                         document.getElementById("model-select").value;
-                    const { search_prefix } = getModelInfo(modelID);
+                    const { search_prefix, max_len } = getModelInfo(modelID);
 
-                    let texts = [];
-                    let labels = [];
+                    let texts = [],
+                        labels = [];
                     const fastaFile = document.getElementById("fasta").files[0];
 
                     if (fastaFile) {
-                        const text = await fastaFile.text();
-                        const parsed = parseFasta(text);
+                        const raw = await fastaFile.text();
+                        const parsed = parseFasta(raw);
+                        if (!parsed.length) {
+                            setStatus(
+                                "No sequences parsed from FASTA file.",
+                                "err",
+                            );
+                            return;
+                        }
                         texts = parsed.map((e) => e.sequence);
                         labels = parsed.map((e) => e.header);
+                        logMsg(
+                            `Parsed ${parsed.length} FASTA sequence(s)`,
+                            "ok",
+                        );
                     } else {
                         const raw = document.getElementById("texts").value;
                         texts = raw
                             .split(",")
                             .map((s) => s.trim())
                             .filter(Boolean);
-                        labels = texts;
+                        labels = [...texts];
                     }
 
-                    if (texts.length === 0) {
-                        setStatus("No input provided.");
+                    if (!texts.length) {
+                        setStatus("No input provided.", "err");
+                        return;
+                    }
+                    if (texts.length < 3) {
+                        setStatus("Need ≥ 3 inputs for t-SNE.", "err");
                         return;
                     }
 
-                    const prefixedTexts = texts.map((t) => search_prefix + t);
+                    // ESM2 guard — truncate to avoid wasm32 capacity overflow in MatMul
+                    if (max_len) {
+                        const before = texts.filter(
+                            (t) => t.length > max_len,
+                        ).length;
+                        texts = texts.map((t) => t.slice(0, max_len));
+                        if (before)
+                            logMsg(
+                                `ESM2: truncated ${before} sequence(s) to ${max_len} residues`,
+                                "info",
+                            );
+                    }
 
-                    setStatus("Computing embeddings…");
+                    btn.disabled = true;
                     try {
-                        const result = await getEmbeddingsForTexts(
-                            prefixedTexts,
+                        setStatus("Computing embeddings…");
+                        const result = await getEmbeddings(
+                            texts.map((t) => search_prefix + t),
                             modelID,
                         );
-                        const embeddings = result.embeddings;
-
                         setStatus("Running t-SNE…");
-                        const coords = runTsne(embeddings, labels);
+                        const coords = runTsne(result.embeddings);
                         drawScatter(coords, labels);
-                        setStatus("Done.");
+                        setStatus(
+                            `Done — ${texts.length} points plotted.`,
+                            "ok",
+                        );
                     } catch (e) {
-                        setStatus("Error: " + e.message);
+                        setStatus("Error: " + e.message, "err");
+                    } finally {
+                        btn.disabled = false;
                     }
                 });
 
-            initWasm().then(() => logMessage("Wasm ready"));
+            initWasm().then(() => logMsg("Wasm ready", "ok"));
         </script>
     </body>
 </html>
