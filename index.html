@@ -1,12 +1,28 @@
 <!doctype html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
-        <title>Embedding t‑SNE Visualizer</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <script src="https://d3js.org/d3.v7.min.js"></script>
-        <script src="./tsne.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="./tsne.js"></script>
+    <meta charset="utf-8" />
+    <title>Embedding t‑SNE Visualizer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+    <!-- SEO -->
+    <meta name="description" content="Visualise text and protein sequence embeddings interactively in the browser. Pick a model (ESM2, e5, MiniLM), paste inputs or upload a FASTA file, and explore the t‑SNE projection — no server required." />
+    <meta name="author" content="syedzayyan" />
+
+    <!-- Open Graph (Facebook, LinkedIn, Slack, iMessage…) -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:site_name"   content="Embedding t‑SNE Visualizer" />
+    <meta property="og:title"       content="Embedding t‑SNE Visualizer" />
+    <meta property="og:description" content="Interactive in-browser t‑SNE for text and protein sequence embeddings. Supports ESM2, e5-small/base, multilingual-e5, and MiniLM — FASTA input included." />
+    <meta property="og:url"         content="https://syedzayyan.github.io/esm_web/" />
+    <meta property="og:locale"      content="en_GB" />
+
+    <!-- X / Twitter -->
+    <meta name="twitter:card"        content="summary" />
+    <meta name="twitter:title"       content="Embedding t‑SNE Visualizer" />
+    <meta name="twitter:description" content="Interactive in-browser t‑SNE for text and protein sequence embeddings. Supports ESM2, e5-small/base, multilingual-e5, and MiniLM — FASTA input included." />
         <style>
             /* ── Theme tokens ── */
             :root {
