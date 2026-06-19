@@ -1,0 +1,171 @@
+# Emscripten build for the C/ggml ESM2 WASM module.
+#
+# Prerequisites:
+#   1. brew install emscripten
+#   2. bash cpp/vendor_ggml.sh          (clones ggml v0.9.7 into vendor/ggml/)
+#
+# Usage (from repo root):
+#   make -f cpp/Makefile.wasm
+#
+# Outputs placed in repo root (served by GitHub Pages / npx serve):
+#   esm2.js   — Emscripten glue (ES module)
+#   esm2.wasm — compiled module
+#
+# After building:
+#   cp chp/esm/esm2-f32.gguf esm2-small.gguf
+
+# intermediate .o files (gitignored)
+GGML_SRC  = vendor/ggml/src
+GGML_INC  = vendor/ggml/include
+CPP_SRC   = cpp
+BUILD_DIR = cpp/wasm-build
+# final .js/.wasm go to repo root
+DIST_DIR  = .
+
+EMCC  = emcc
+EMCXX = em++
+
+# CPU-only build for WASM: no Metal/CUDA/etc, no dynamic backend registry
+# (we call ggml_backend_cpu_init() directly), single-threaded (see the
+# __EMSCRIPTEN__ guard in esm2.cpp — avoids needing -pthread / COOP+COEP).
+GGML_DEFS = \
+    -DGGML_USE_CPU \
+    -DGGML_NO_METAL \
+    -DNDEBUG \
+    -D_GNU_SOURCE \
+    -DGGML_VERSION='"0.9.7"' \
+    -DGGML_COMMIT='"vendored"'
+
+CFLAGS_COMMON = -O3 -I$(GGML_INC) -I$(GGML_SRC) -I$(GGML_SRC)/ggml-cpu $(GGML_DEFS)
+EMCFLAGS      = $(CFLAGS_COMMON) -std=c17
+EMCXXFLAGS    = $(CFLAGS_COMMON) -std=c++17 -I$(CPP_SRC)
+
+EXPORTS = '["_esm2_wasm_load","_esm2_wasm_embed","_esm2_wasm_get_hidden","_esm2_wasm_n_embd","_esm2_wasm_free","_malloc","_free"]'
+RUNTIME = '["ccall","cwrap","FS","HEAPF32","HEAPU8","getValue"]'
+
+LDFLAGS = \
+    -s WASM=1 \
+    -s ALLOW_MEMORY_GROWTH=1 \
+    -s MAXIMUM_MEMORY=512mb \
+    -s INITIAL_MEMORY=67108864 \
+    -s EXPORTED_FUNCTIONS=$(EXPORTS) \
+    -s EXPORTED_RUNTIME_METHODS=$(RUNTIME) \
+    -s ENVIRONMENT=web,worker \
+    -s MODULARIZE=1 \
+    -s EXPORT_NAME=ESM2Module \
+    -s EXPORT_ES6=1 \
+    -s NO_EXIT_RUNTIME=1 \
+    -O3
+
+B = $(BUILD_DIR)
+$(shell mkdir -p $(BUILD_DIR))
+
+# ggml core (C) — note: gguf/ggml-backend/ggml-threading are .cpp in this
+# tree, not .c (ggml was restructured upstream of v0.9.7's source layout).
+C_OBJS = \
+    $(B)/ggml.o \
+    $(B)/ggml_alloc.o \
+    $(B)/ggml_quants.o \
+    $(B)/ggml_cpu.o \
+    $(B)/ggml_cpu_quants.o \
+    $(B)/ggml_cpu_arch_wasm_quants.o
+
+CXX_OBJS = \
+    $(B)/ggml_cpp.o \
+    $(B)/ggml_backend.o \
+    $(B)/ggml_threading.o \
+    $(B)/gguf.o \
+    $(B)/ggml_cpu_cpp.o \
+    $(B)/ggml_cpu_traits.o \
+    $(B)/ggml_cpu_binary_ops.o \
+    $(B)/ggml_cpu_unary_ops.o \
+    $(B)/ggml_cpu_vec.o \
+    $(B)/ggml_cpu_ops.o \
+    $(B)/ggml_cpu_repack.o \
+    $(B)/ggml_cpu_hbm.o \
+    $(B)/ggml_cpu_amx.o \
+    $(B)/ggml_cpu_amx_mmq.o \
+    $(B)/esm2.o \
+    $(B)/esm2_wasm.o
+
+OBJS = $(C_OBJS) $(CXX_OBJS)
+
+.PHONY: all clean
+
+all: $(DIST_DIR)/esm2.js
+
+$(B)/ggml.o: $(GGML_SRC)/ggml.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_alloc.o: $(GGML_SRC)/ggml-alloc.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_quants.o: $(GGML_SRC)/ggml-quants.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu.o: $(GGML_SRC)/ggml-cpu/ggml-cpu.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_quants.o: $(GGML_SRC)/ggml-cpu/quants.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_arch_wasm_quants.o: $(GGML_SRC)/ggml-cpu/arch/wasm/quants.c
+	$(EMCC) $(EMCFLAGS) -c $< -o $@
+
+$(B)/ggml_cpp.o: $(GGML_SRC)/ggml.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_backend.o: $(GGML_SRC)/ggml-backend.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_threading.o: $(GGML_SRC)/ggml-threading.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/gguf.o: $(GGML_SRC)/gguf.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_cpp.o: $(GGML_SRC)/ggml-cpu/ggml-cpu.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_traits.o: $(GGML_SRC)/ggml-cpu/traits.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_binary_ops.o: $(GGML_SRC)/ggml-cpu/binary-ops.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_unary_ops.o: $(GGML_SRC)/ggml-cpu/unary-ops.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_vec.o: $(GGML_SRC)/ggml-cpu/vec.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_ops.o: $(GGML_SRC)/ggml-cpu/ops.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_repack.o: $(GGML_SRC)/ggml-cpu/repack.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_hbm.o: $(GGML_SRC)/ggml-cpu/hbm.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_amx.o: $(GGML_SRC)/ggml-cpu/amx/amx.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/ggml_cpu_amx_mmq.o: $(GGML_SRC)/ggml-cpu/amx/mmq.cpp
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/esm2.o: $(CPP_SRC)/esm2.cpp $(CPP_SRC)/esm2.h $(CPP_SRC)/ggml_common.h
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(B)/esm2_wasm.o: $(CPP_SRC)/esm2_wasm.cpp $(CPP_SRC)/esm2.h
+	$(EMCXX) $(EMCXXFLAGS) -c $< -o $@
+
+$(DIST_DIR)/esm2.js: $(OBJS)
+	$(EMCXX) $(OBJS) $(LDFLAGS) -o $@
+	@echo ""
+	@echo "  Built: esm2.js + esm2.wasm"
+	@echo "  Next:  cp chp/esm/esm2-f32.gguf esm2-small.gguf"
+
+clean:
+	rm -rf $(BUILD_DIR)
+	rm -f $(DIST_DIR)/esm2.js $(DIST_DIR)/esm2.wasm

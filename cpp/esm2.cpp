@@ -1,10 +1,15 @@
 #include "esm2.h"
+#include "ggml_common.h"
 
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
 #include "ggml.h"
 #include "gguf.h"
+
+#if defined(__APPLE__) && !defined(GGML_NO_METAL)
+#include "ggml-metal.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -125,7 +130,24 @@ esm2_model * esm2_load(const std::string & path) {
         tensors[name] = cur;
     }
 
-    model->backend = ggml_backend_cpu_init();
+    // Prefer Metal on Apple Silicon; fall back to CPU everywhere else.
+#if defined(__APPLE__) && !defined(GGML_NO_METAL)
+    model->backend = ggml_backend_metal_init();
+    if (!model->backend) {
+        fprintf(stderr, "esm2: Metal init failed, falling back to CPU\n");
+    }
+#endif
+    if (!model->backend) {
+        model->backend = ggml_backend_cpu_init();
+    }
+
+#if defined(__EMSCRIPTEN__)
+    // Single-threaded build: no -pthread (avoids the COOP/COEP header
+    // requirements that real Wasm threads need, which static hosting like
+    // GitHub Pages / `npx serve` doesn't set).
+    ggml_backend_cpu_set_n_threads(model->backend, 1);
+#endif
+
     model->buffer = ggml_backend_alloc_ctx_tensors(model->ctx, model->backend);
 
     FILE * f = fopen(path.c_str(), "rb");
@@ -218,20 +240,6 @@ int esm2_n_embd(const esm2_model * model) {
     return model->n_embd;
 }
 
-// Apply LayerNorm followed by an affine transform (weight * x + bias),
-// matching candle_nn::LayerNorm.
-static ggml_tensor * layer_norm(ggml_context * ctx, ggml_tensor * x, ggml_tensor * w, ggml_tensor * b, float eps) {
-    x = ggml_norm(ctx, x, eps);
-    x = ggml_mul(ctx, x, w);
-    x = ggml_add(ctx, x, b);
-    return x;
-}
-
-static ggml_tensor * linear(ggml_context * ctx, ggml_tensor * w, ggml_tensor * b, ggml_tensor * x) {
-    x = ggml_mul_mat(ctx, w, x);
-    x = ggml_add(ctx, x, b);
-    return x;
-}
 
 std::vector<float> esm2_eval(esm2_model * model, const std::vector<int32_t> & tokens) {
     const int n_tokens = (int) tokens.size();
@@ -321,7 +329,7 @@ std::vector<float> esm2_eval(esm2_model * model, const std::vector<int32_t> & to
     ggml_set_output(cur);
     ggml_build_forward_expand(gf, cur);
 
-    ggml_gallocr_t galloc = ggml_gallocr_new(ggml_backend_cpu_buffer_type());
+    ggml_gallocr_t galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(model->backend));
     ggml_gallocr_alloc_graph(galloc, gf);
 
     std::vector<int32_t> pos(n_tokens);

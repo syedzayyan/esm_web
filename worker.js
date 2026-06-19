@@ -1,84 +1,106 @@
-import init, { Model } from "./pkg/esm_rs.js";
+// ESM2 embedding worker — backed by the C/ggml WASM build.
+//
+// Built artifacts required (make -f cpp/Makefile.wasm):
+//   ./esm2.js   — Emscripten glue
+//   ./esm2.wasm — compiled module
+//   ./esm2-small.gguf — model weights (copy from chp/esm/esm2-f32.gguf)
+//
+// Receives: { sentences: string[] }
+// Sends:    { status: string }
+//           { status: "complete", embeddings: number[][] }
+//           { error: string }
 
-// Global serde helpers (if not exported)
-const serde_wasm_bindgen = {
-  toJsValue: (obj) => {
-    /* wasm-bindgen polyfill or import */
-  },
-  fromJsValue: async (jsval) => jsval, // Temp
-};
+import ESM2Module from "./esm2.js";
 
-let modelPromise = null;
-let currentModelID = null;
+const GGUF_URL = "./esm2-small.gguf";
 
-const modelIDMap = {
-  intfloat_e5_small_v2: "bert",
-  intfloat_e5_base_v2: "bert",
-  intfloat_multilingual_e5_small: "bert",
-  sentence_transformers_all_MiniLM_L6_v2: "bert",
-  sentence_transformers_all_MiniLM_L12_v2: "bert",
-  facebook_esm2_t6_8M_UR50D: "esm2",
-};
+let Module    = null;
+let loadFn, embedFn, getHiddenFn, nEmbdFn;
+let modelReady = false;
 
-async function loadModel(weightsURL, tokenizerURL, configURL, modelID) {
-  if (modelPromise && currentModelID === modelID) return modelPromise;
+async function ensureReady() {
+    if (modelReady) return;
 
-  currentModelID = modelID;
-  modelPromise = (async () => {
-    await init();
+    // Instantiate Emscripten module
+    if (!Module) {
+        self.postMessage({ status: "Initialising WASM module…" });
+        Module = await ESM2Module();
+        loadFn      = Module.cwrap("esm2_wasm_load",      "number", ["number","number"]);
+        embedFn     = Module.cwrap("esm2_wasm_embed",     "number", ["string"]);
+        getHiddenFn = Module.cwrap("esm2_wasm_get_hidden","number", []);
+        nEmbdFn     = Module.cwrap("esm2_wasm_n_embd",    "number", []);
+    }
 
-    const [wRes, tRes, cRes] = await Promise.all([
-      fetch(weightsURL),
-      fetch(tokenizerURL),
-      fetch(configURL),
-    ]);
+    // Fetch GGUF
+    self.postMessage({ status: "Fetching model weights (28 MB)…", downloadProgress: { label: "Fetching model…", percent: 0 } });
+    const resp = await fetch(GGUF_URL);
+    if (!resp.ok) throw new Error(`GGUF fetch failed (${resp.status}): ${GGUF_URL}`);
 
-    const [wBuf, tBuf] = await Promise.all([
-      wRes.arrayBuffer(),
-      tRes.arrayBuffer(),
-    ]);
+    const buf  = await resp.arrayBuffer();
+    self.postMessage({ status: "Loading model…", downloadProgress: { label: "Loading model…", percent: 90 } });
 
-    const configText = await cRes.text();
-    const cBuf = new TextEncoder().encode(configText);
+    const view = new Uint8Array(buf);
+    const ptr  = Module._malloc(view.length);
+    Module.HEAPU8.set(view, ptr);
+    const ok = loadFn(ptr, view.length);
+    Module._free(ptr);
 
-    return new Model(new Uint8Array(wBuf), new Uint8Array(tBuf), cBuf);
-  })().catch((e) => {
-    // Reset cache on failure so next attempt retries
-    modelPromise = null;
-    currentModelID = null;
-    throw e;
-  });
-
-  return modelPromise;
+    if (!ok) throw new Error("esm2_wasm_load returned failure");
+    modelReady = true;
+    self.postMessage({ status: `Model ready (${nEmbdFn()}-d embeddings)`, downloadProgress: { label: "Done", percent: 100 } });
 }
 
 self.onmessage = async (event) => {
-  try {
-    const {
-      weightsURL,
-      tokenizerURL,
-      configURL,
-      modelID,
-      sentences,
-      normalize = true,
-    } = event.data;
+    try {
+        const { sentences } = event.data;
 
-    self.postMessage({ status: `Loading ${modelID}...` });
-    console.log("[worker] loading model...");
-    const model = await loadModel(weightsURL, tokenizerURL, configURL, modelID);
+        await ensureReady();
 
-    console.log("[worker] model loaded:", model);
+        const nEmbd = nEmbdFn();
+        const embeddings = [];
 
-    console.log("[worker] calling get_embeddings with sentences:", sentences);
-    const result = model.get_embeddings({
-      sentences,
-      normalize_embeddings: normalize,
-    });
-    console.log("[worker] result:", result);
+        for (let i = 0; i < sentences.length; i++) {
+            // Strip to canonical amino-acid alphabet; U→C (selenocysteine)
+            const seq = sentences[i]
+                .toUpperCase()
+                .replace(/U/g, "C")
+                .replace(/[^ACDEFGHIKLMNPQRSTVWY]/g, "");
 
-    self.postMessage({ status: "complete", modelID, embeddings: result.data });
-  } catch (e) {
-    console.error("[worker] error:", e);
-    self.postMessage({ error: e.message ?? String(e) });
-  }
+            self.postMessage({
+                status: `Embedding ${i + 1} / ${sentences.length}…`,
+                downloadProgress: {
+                    label: `Embedding sequences…`,
+                    percent: Math.round(100 * i / sentences.length),
+                },
+            });
+
+            if (!seq) { embeddings.push(new Array(nEmbd).fill(0)); continue; }
+
+            const nTok = embedFn(seq);
+            if (!nTok) { embeddings.push(new Array(nEmbd).fill(0)); continue; }
+
+            // Copy hidden states out before the next call overwrites the buffer
+            const ptr    = getHiddenFn();
+            const hidden = new Float32Array(Module.HEAPF32.buffer, ptr, nTok * nEmbd).slice();
+
+            // Mean-pool over all tokens (including BOS/EOS, matching training convention)
+            const mean = new Float32Array(nEmbd);
+            for (let t = 0; t < nTok; t++)
+                for (let d = 0; d < nEmbd; d++) mean[d] += hidden[t * nEmbd + d];
+            for (let d = 0; d < nEmbd; d++) mean[d] /= nTok;
+
+            // L2 normalise — improves cosine-based t-SNE clustering
+            let norm = 0;
+            for (let d = 0; d < nEmbd; d++) norm += mean[d] * mean[d];
+            norm = Math.sqrt(norm) || 1;
+            const vec = Array.from(mean, v => v / norm);
+            embeddings.push(vec);
+        }
+
+        self.postMessage({ status: "complete", embeddings });
+
+    } catch (e) {
+        console.error("[worker]", e);
+        self.postMessage({ error: e.message ?? String(e) });
+    }
 };
